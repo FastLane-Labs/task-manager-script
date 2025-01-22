@@ -20,3 +20,10 @@ export interface TaskDefinition {
   task: Task;
   schedule: TaskSchedule;
 }
+
+export interface PolicyBond {
+  bonded: bigint;
+  unbonding: bigint;
+  lastAccessedBlock: bigint;
+}
+
