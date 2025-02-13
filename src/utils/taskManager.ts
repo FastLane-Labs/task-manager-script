@@ -6,27 +6,24 @@ import {
   decodeEventLog
 } from 'viem';
 import taskManagerAbi from '../abi/taskmanager.json';
-import chalk from 'chalk';
 
 export class TaskManagerHelper {
   public contract;
   private publicClient: PublicClient;
-  private walletClient: WalletClient | null;
 
   constructor(
     address: Address,
     publicClient: PublicClient,
-    walletClient: WalletClient | null
+    walletClient: WalletClient
   ) {
     this.publicClient = publicClient;
-    this.walletClient = walletClient;
     this.contract = getContract({
       address,
       abi: taskManagerAbi,
       client: {
         public: publicClient,
         wallet: walletClient,
-        account: walletClient?.account,
+        account: walletClient.account,
       }
     });
   }
@@ -38,34 +35,70 @@ export class TaskManagerHelper {
     return await this.contract.read.estimateCost([targetBlock, gasLimit]) as bigint;
   }
 
-  async scheduleTask(taskDefinition: TaskDefinition): Promise<`0x${string}`> {
-    if (!this.walletClient) {
-      throw new Error('Wallet client required for scheduling');
+  async scheduleTask(
+    environment: Address,
+    gasLimit: bigint,
+    targetBlock: bigint,
+    maxPayment: bigint,
+    taskData: `0x${string}`
+  ) {
+    const hash = await this.contract.write.scheduleTask(
+      [environment, gasLimit, targetBlock, maxPayment, taskData],
+      { value: maxPayment }
+    );
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+    
+    const scheduledEvent = receipt.logs.find(log => {
+      try {
+        const event = decodeEventLog({
+          abi: taskManagerAbi,
+          data: log.data,
+          topics: log.topics,
+        });
+        return event.eventName === 'TaskScheduled';
+      } catch {
+        return false;
+      }
+    });
+
+    if (!scheduledEvent) {
+      throw new Error('Task scheduling failed - no TaskScheduled event found');
     }
 
-    console.log(chalk.blue('\nSubmitting schedule task transaction...'));
-    const hash = await this.contract.write.scheduleTask([
-      taskDefinition.task.target,  // implementation/environment address
-      taskDefinition.task.gas,     // taskGasLimit
-      taskDefinition.schedule.startBlock, // targetBlock
-      await this.estimateTaskCost(taskDefinition.schedule.startBlock, taskDefinition.task.gas), // maxPayment
-      taskDefinition.task.data,    // taskCallData
-    ], {
-      value: await this.estimateTaskCost(taskDefinition.schedule.startBlock, taskDefinition.task.gas)
+    const { eventName, args } = decodeEventLog({
+      abi: taskManagerAbi,
+      data: scheduledEvent.data,
+      topics: scheduledEvent.topics,
+      eventName: 'TaskScheduled'
     });
-    
-    console.log(chalk.green('Transaction submitted:'), chalk.yellow(hash));
-    return hash;
+
+    return {
+      taskId: args?.[0] as `0x${string}`,
+      owner: args?.[1] as `0x${string}`,
+      targetBlock: args?.[2] as bigint
+    };
   }
 
   async executeTasks(
     payoutAddress: Address,
     targetGasReserve: bigint = 0n
   ) {
-    const hash = await this.contract.write.executeTasks([payoutAddress, targetGasReserve]);
-
+    console.log('Attempting to submit executeTasks transaction...');
+    let hash;
+    try {
+      hash = await this.contract.write.executeTasks([payoutAddress, targetGasReserve]);
+      console.log('Got transaction hash:', hash);
+    } catch (error) {
+      console.error('Failed to submit transaction:', error);
+      throw error;
+    }
+    
+    console.log('Waiting for transaction confirmation...');
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+    console.log('Transaction confirmed:', hash);
 
+    console.log('Looking for TasksExecuted event...');
     const executedEvent = receipt.logs.find(log => {
       try {
         const event = decodeEventLog({
@@ -83,7 +116,7 @@ export class TaskManagerHelper {
       throw new Error('Task execution failed - no TasksExecuted event found');
     }
 
-    const { eventName, args } = decodeEventLog({
+    const { args } = decodeEventLog({
       abi: taskManagerAbi,
       data: executedEvent.data,
       topics: executedEvent.topics,

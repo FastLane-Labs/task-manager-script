@@ -17,7 +17,8 @@
     "build": "tsc",
     "env": "tsx ./src/scripts/getEnvironment.ts",
     "addresses": "tsx ./src/scripts/getAddresses.ts",
-    "bonds": "tsx ./src/scripts/getPolicyBonds.ts"
+    "bonds": "tsx ./src/scripts/getPolicyBonds.ts",
+    "execute": "tsx ./src/scripts/executeTasks.ts"
   },
   "type": "module",
   "dependencies": {
