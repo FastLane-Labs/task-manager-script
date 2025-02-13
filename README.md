@@ -139,6 +139,8 @@ The AddressHub contract (`ADDRESS_HUB` in .env) provides addresses for:
 - Shmonad (bond management)
 - Other system contracts
 
+> **Testnet AddressHub**: `0xC9f0cDE8316AbC5Efc8C3f5A6b571e815C021B51`
+
 ```typescript
 const addressHub = new AddressHubHelper(ADDRESS_HUB, publicClient);
 const taskManagerAddress = await addressHub.getTaskManagerAddress();
