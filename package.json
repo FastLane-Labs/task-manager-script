@@ -10,5 +10,8 @@
     "demo": "tsx ./src/index.ts",
     "build": "tsc"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@types/node": "^22.13.1"
+  }
 }
