@@ -2,381 +2,193 @@
 
 ## Overview
 
-The `ITaskManager` interface is a core component of the FastLane task scheduling system, designed to manage and execute automated tasks on the Monad blockchain. It provides a comprehensive set of functions for scheduling, executing, and monitoring blockchain tasks with built-in reliability and gas optimization features.
+The **Task Manager** is a decentralized system designed to schedule and execute smart contract tasks on-chain. Its primary goals are to:
 
-The system allows users to:
-- Schedule tasks for future execution
-- Execute tasks immediately and schedule follow-ups
-- Monitor task execution status
-- Manage task bonds and gas requirements
-- Query task schedules and execution blocks
+- **Record Tasks Securely:** When tasks are scheduled, they are recorded along with essential metadata such as the owner's address, a unique nonce, and task-specific parameters
+- **Execute Tasks Reliably:** Tasks are executed in dedicated, isolated environments to ensure safety and gas efficiency
+- **Provide Economic Security:** The system uses a bonding mechanism via shMONAD tokens to secure tasks against malicious behavior
+- **Optimize Load:** A load balancing mechanism dynamically distributes tasks across blocks, taking into account network conditions and historical execution metrics
 
-## Data Structures
+## Scheduling vs. Execution
+
+### Scheduling
+
+- **Task Recording:** When a task is scheduled, all necessary details (owner, nonce, task size, target address, and encoded call data) are recorded in the system
+- **Bonding Requirement:** Scheduling a task requires bonding shMONAD tokens to secure the task. The required bond is dynamically calculated based on task size and network conditions
+
+### Execution
+
+- **Execution Timing:**
+  - Tasks are designed to be executed at the earliest possible opportunity — at least one block after they are scheduled
+  - Due to network conditions and block production variability, the exact execution block may be later than the intended target
+- **Isolation:** Each task executes in its own isolated environment, ensuring that execution contexts do not interfere with one another
+- **Gas Categories:**
+  - Small Tasks: <= 100,000 gas
+  - Medium Tasks: <= 250,000 gas
+  - Large Tasks: <= 750,000 gas
+
+## Task Encoding
+
+Before a task is scheduled, it must be encoded into a standardized format so the task manager can process it correctly. The encoding involves three key layers:
+
+1. **Target Function Call Encoding:**  
+   Use Solidity's ABI encoding (e.g., `abi.encodeCall` or `abi.encodeWithSelector`) to encode the function call for the target contract.
+
+2. **Packing the Execution Data:**  
+   Combine the target contract's address with the encoded call data. This step produces a "packed" data blob that specifies both the destination and the intended action.
+
+3. **Encoding for the Execution Environment:**  
+   Wrap the packed data with the `executeTask` function selector (from the `ITaskExecutionEnvironment` interface) to create the final task data payload.
+
+## Examples
+
+### Example 1: Encoding a Task
 
 ```solidity
-struct Task {
-    address from;     // Task owner
-    uint64 gas;      // Gas limit (must be non-zero and <= LARGE_GAS)
-    address target;   // Target contract
-    bytes data;      // Call data
-    uint64 nonce;    // Auto-incrementing nonce per user
-}
+// Import the interface for the execution environment
+import { ITaskExecutionEnvironment } from "path/to/ITaskExecutionEnvironment.sol";
 
-struct TaskSchedule {
-    uint64 startBlock;     // Start block (must be in future)
-    uint64 interval;       // Blocks between executions (min 100)
-    uint64 executions;     // Number of times to execute
-    bool active;          // Active status
-    uint64 deadline;      // Informational deadline
-}
+// Step 1: Encode the target function call (e.g., setting a value to 42)
+bytes memory targetCalldata = abi.encodeCall(MockTarget.setValue, (42));
 
-struct TaskDefinition {
-    Task task;             // Task parameters
-    TaskSchedule schedule; // Schedule parameters
-}
+// Step 2: Pack the target address with the encoded call data
+bytes memory packedData = abi.encode(address(target), targetCalldata);
 
-struct TaskInfo {
-    TaskDefinition definition;
-    TaskMetrics metrics;
-}
+// Step 3: Encode the final task data using the executeTask selector
+bytes memory taskData = abi.encodeWithSelector(
+    ITaskExecutionEnvironment.executeTask.selector,
+    packedData
+);
 ```
 
-### Task Types
-- `Task`: Represents a complete task instance
-- `TaskSchedule`: Represents the scheduling paramters of a task
-- `TaskDefinition`: Defines the `Task` and its `TaskSchedule`
-- `TaskMetrics`: Contains task performance metrics and bond accounting
-- `TaskInfo`: Defines the `TaskDefinition` and `TaskMetrics`
-
-
-## Functions Reference
-
-### Task Execution
-
-#### executeQueuedTasks
-```solidity
-function executeQueuedTasks(uint256 targetGasReserve) 
-    external returns (uint256 executed, uint256 failed)
-```
-Executes pending tasks while maintaining a specified gas reserve.
-- Parameters:
-  - `targetGasReserve`: Minimum gas to keep after execution
-- Returns:
-  - `executed`: Number of successfully executed tasks
-  - `failed`: Number of failed task executions
-
-#### executeAndSchedule
-```solidity
-function executeAndSchedule(TaskDefinition calldata taskDef)
-    external returns (bytes32 taskHash, bool success, bytes memory returnData)
-```
-Executes a task immediately and schedules it for future executions.
-- Parameters:
-  - `taskDef`: Task configuration and schedule
-- Returns:
-  - `taskHash`: Unique identifier for the task
-  - `success`: Execution success status
-  - `returnData`: Data returned from task execution
-
-### Task Management
-
-#### scheduleTask
-```solidity
-function scheduleTask(TaskDefinition calldata taskDef) 
-    external returns (bytes32 taskHash)
-```
-Schedules a task for future execution without immediate execution.
-- Parameters:
-  - `taskDef`: Task configuration and schedule
-- Returns:
-  - `taskHash`: Unique identifier for the scheduled task
-
-#### updateTaskSchedule
-```solidity
-function updateTaskSchedule(bytes32 taskHash, TaskDefinition calldata newDefinition) 
-    external
-```
-Updates an existing task's schedule.
-- Parameters:
-  - `taskHash`: Task identifier
-  - `newDefinition`: Updated task configuration (only schedule changes allowed)
-
-#### cancelTask
-```solidity
-function cancelTask(bytes32 taskHash) 
-    external
-```
-Cancels a scheduled task.
-- Parameters:
-  - `taskHash`: Task identifier to cancel
-
-### Task Queries
-
-#### getAccountTasks
-```solidity
-function getAccountTasks(address account) 
-    external view returns (bytes32[] memory)
-```
-Retrieves all tasks associated with an account.
-- Parameters:
-  - `account`: Address to query
-- Returns: Array of task hashes
-
-#### getTaskInfo
-```solidity
-function getTaskInfo(bytes32 taskHash) 
-    external view returns (TaskInfo memory)
-```
-Retrieves detailed information about a specific task.
-- Parameters:
-  - `taskHash`: Task identifier
-- Returns: Complete task information including definition and metrics
-
-### Schedule Management
-
-#### getTasksInRange
-```solidity
-function getTasksInRange(uint64 startBlock, uint64 endBlock) 
-    external view returns (bytes32[] memory)
-```
-Retrieves tasks scheduled within a block range.
-- Parameters:
-  - `startBlock`: Starting block number (inclusive)
-  - `endBlock`: Ending block number (inclusive)
-- Returns: Array of task hashes
-
-#### getNextExecutionBlockInRange
-```solidity
-function getNextExecutionBlockInRange(uint64 startBlock, uint64 endBlock) 
-    external view returns (uint64)
-```
-Finds the earliest block with scheduled tasks in a range.
-- Parameters:
-  - `startBlock`: Starting block number (inclusive)
-  - `endBlock`: Ending block number (inclusive)
-- Returns: Earliest block number with tasks (0 if none found)
-
-### Bond Management
-
-#### estimateRequiredBond
-```solidity
-function estimateRequiredBond(TaskDefinition calldata taskDef, uint256 gasPrice)
-    external view returns (uint256 requiredBond)
-```
-Calculates the required bond amount for a task.
-- Parameters:
-  - `taskDef`: Task configuration
-  - `gasPrice`: Gas price for estimation
-- Returns: Required bond amount in base currency
-
-## Core Interface
+### Example 2: Scheduling a Task
 
 ```solidity
-interface ITaskManager {
-    /// @notice Execute queued tasks up to the target gas reserve
-    /// @param targetGasReserve Amount of gas to reserve for after execution
-    /// @return executed Number of tasks successfully executed
-    /// @return failed Number of tasks that failed execution
-    function executeQueuedTasks(uint256 targetGasReserve) external returns (uint256 executed, uint256 failed);
+// Assume the following variables are defined:
+// - executionEnvironmentAddress: the address of the execution environment contract
+// - taskManager: the deployed Task Manager contract
+// - taskData: the encoded task data from the previous example
+// - payoutAddress: the address to receive any execution fees
 
-    /// @notice Execute a task immediately and schedule it for future executions
-    /// @param taskDef The task definition
-    /// @return taskHash Hash of the scheduled task
-    /// @return success Whether immediate execution was successful
-    /// @return returnData Return data from immediate execution
-    function executeAndSchedule(TaskDefinition calldata taskDef)
-        external
-        returns (bytes32 taskHash, bool success, bytes memory returnData);
+// Set the target block to ensure execution occurs at least one block later
+uint64 targetBlock = uint64(block.number + 2);
 
-    /// @notice Schedule a task for future execution
-    /// @param taskDef The task definition
-    /// @return taskHash Hash of the scheduled task
-    function scheduleTask(TaskDefinition calldata taskDef) external returns (bytes32 taskHash);
-
-    /// @notice Update a task's schedule
-    /// @param taskHash Hash of the task to update
-    /// @param newDefinition New task definition (only schedule can be updated)
-    function updateTaskSchedule(bytes32 taskHash, TaskDefinition calldata newDefinition) external;
-
-    /// @notice Cancel a task
-    /// @param taskHash Hash of the task to cancel
-    function cancelTask(bytes32 taskHash) external;
-
-    /// @notice Get all tasks for an account
-    /// @param account The account to query
-    /// @return Array of task hashes
-    function getAccountTasks(address account) external view returns (bytes32[] memory);
-
-    /// @notice Get information about a task
-    /// @param taskHash Hash of the task to query
-    /// @return Task information
-    function getTaskInfo(bytes32 taskHash) external view returns (TaskInfo memory);
-
-    /// @notice Get tasks scheduled in a block range
-    /// @param startBlock Start block (inclusive)
-    /// @param endBlock End block (inclusive)
-    /// @return Array of task hashes
-    function getTasksInRange(uint64 startBlock, uint64 endBlock) external view returns (bytes32[] memory);
-
-    /// @notice Estimate required bond for a task
-    /// @param taskDef The task definition
-    /// @param gasPrice Gas price to use for estimation
-    /// @return requiredBond Required bond amount
-    function estimateRequiredBond(
-        TaskDefinition calldata taskDef,
-        uint256 gasPrice
-    )
-        external
-        view
-        returns (uint256 requiredBond);
-
-    /// @notice Get the current nonce for an account's task submissions
-    /// @param account The account to query
-    /// @return Current nonce value for the account
-    function getAccountNonce(address account) external view returns (uint64);
-
-    /// @notice Get next execution blocks for specific tasks
-    /// @param account The account to query (address(0) for account-independent query)
-    /// @param taskHashes Array of task hashes to query
-    /// @return resultHashes Array of task hashes
-    /// @return nextBlocks Array of next execution blocks (0 if task is completed/inactive)
-    function getNextExecutionBlocks(
-        address account,
-        bytes32[] calldata taskHashes
-    )
-        external
-        view
-        returns (bytes32[] memory resultHashes, uint64[] memory nextBlocks);
-
-    /// @notice Get all tasks and their next execution blocks for an account
-    /// @param account The account to query
-    /// @return resultHashes Array of task hashes
-    /// @return nextBlocks Array of next execution blocks (0 if task is completed/inactive)
-    function getAccountTasksWithBlocks(address account)
-        external
-        view
-        returns (bytes32[] memory resultHashes, uint64[] memory nextBlocks);
-
-    /// @notice Get next execution blocks for specific tasks (account independent)
-    /// @param taskHashes Array of task hashes to query
-    /// @return resultHashes Array of task hashes
-    /// @return nextBlocks Array of next execution blocks (0 if task is completed/inactive)
-    function getNextBlocksForTasks(bytes32[] calldata taskHashes)
-        external
-        view
-        returns (bytes32[] memory resultHashes, uint64[] memory nextBlocks);
-}
-```
-
-## Usage Examples
-
-### Scheduling a Task
-
-```solidity
-// Create task definition
-TaskDefinition memory task = TaskDefinition({
-    task: Task({
-        from: msg.sender,
-        gas: 100_000,
-        target: targetContract,
-        data: callData,
-        nonce: taskManager.getAccountNonce(msg.sender)
-    }),
-    schedule: TaskSchedule({
-        startBlock: uint64(block.number + 10),
-        interval: 100,         // Minimum interval
-        executions: 1,         // Execute once
-        active: true,
-        deadline: uint64(block.number + 1000)
-    })
-});
-
-// Schedule the task
-bytes32 taskHash = taskManager.scheduleTask(task);
-```
-
-### Executing Tasks
-
-```solidity
-// Direct execution
-(bool success, bytes memory result) = taskManager.executeTask(taskHash);
-
-// Batch execution
-(uint256 executed, uint256 failed) = taskManager.executeQueuedTasks(MINIMUM_RESERVE);
-```
-
-### Managing Tasks
-
-```solidity
-// Cancel task
-taskManager.cancelTask(taskHash);
-
-// Update schedule
-taskManager.updateTaskSchedule(taskHash, newDefinition);
-
-// Get task info
-TaskInfo memory info = taskManager.getTaskInfo(taskHash);
-```
-
-## Events
-
-```solidity
-// Task lifecycle events
-event TaskScheduled(bytes32 indexed taskHash, address indexed owner, uint64 nextBlock);
-event TaskExecuted(bytes32 indexed taskHash, address indexed executor, bool success, bytes returnData);
-event TaskCancelled(bytes32 indexed taskHash, address indexed owner);
-event TaskInactiveDueToInsufficientBonds(bytes32 indexed taskHash, address indexed owner, uint256 requiredBond);
-
-// Task metrics events
-event TaskExecutionRecorded(
-    bytes32 indexed taskHash, bool success, uint256 gasUsed, uint256 successCount, uint256 failureCount
+// Schedule the task with a specified gas limit and maximum payment
+(bool scheduled, uint256 executionCost, bytes32 taskId) = taskManager.scheduleTask(
+    executionEnvironmentAddress,  // Execution environment address
+    100_000,                     // Gas limit (should be <= predefined limits)
+    targetBlock,                 // Target execution block
+    type(uint256).max / 2,       // Maximum payment for execution
+    taskData                     // Encoded task data
 );
 
-// Accounting events
-event ExecutorReimbursed(bytes32 indexed taskHash, address indexed executor, uint256 amount);
-event ProtocolFeeCollected(bytes32 indexed taskHash, uint256 amount);
-
-// Batch operation events
-event TasksExecuted(uint256 executed, uint256 failed);
-
-// Config events
-event TaskConfigUpdated(bytes32 indexed taskHash, address indexed owner);
+require(scheduled, "Task scheduling failed");
 ```
-## Gas Management
 
-### Categories
-- Small Tasks: <= 100,000 gas
-- Medium Tasks: <= 250,000 gas
-- Large Tasks: <= 750,000 gas
+### Example 3: Executing a Task
 
-### Executing Tasks with Gas Management
 ```solidity
-// Execute tasks while keeping 100,000 gas in reserve
-(uint256 executed, uint256 failed) = taskManager.executeQueuedTasks(100000);
+// Execute pending tasks. The payout address receives any execution fees
+// The 'targetGasReserve' parameter reserves gas for post-execution operations
+uint256 feesEarned = taskManager.executeTasks(payoutAddress, 0);
+
+// Verify that the task has been executed
+bool executed = taskManager.isTaskExecuted(taskId);
+require(executed, "Task was not executed");
 ```
 
-### Monitoring Task Status
+## Test Validity
+
+The examples provided here are consistent with our internal tests. Key points verified in our tests include:
+
+- **Execution Delay:** Tasks are scheduled with a target block at least two blocks ahead (e.g., block.number + 2)
+- **Task Metadata Accuracy:** Tests verify correct recording and updating of task metadata
+- **Cancellation & Authorization:** Only authorized addresses can cancel tasks
+- **State Updates Post-Execution:** Tests confirm target contract state updates and task execution status
+
+## Advanced Topics
+
+### Rescheduling Tasks
+
+The Task Manager supports task rescheduling using dedicated execution environments (such as the **ReschedulingTaskEnvironment**). This feature improves reliability without requiring manual intervention.
+
+#### How Rescheduling Works
+
+- **Automatic Retry:** When a task fails, the environment emits an event and schedules a retry after a defined delay
+- **Retry Limit:** A maximum number of retries (e.g., `MAX_RETRIES = 3`) prevents infinite retry loops
+
+#### Example: Rescheduling a Task
+
 ```solidity
-// Get task information
-TaskInfo memory info = taskManager.getTaskInfo(taskHash);
+// Assume that the ReschedulingTaskEnvironment is deployed
+bytes memory targetCalldata = abi.encodeCall(MockTarget.setValue, (42));
+bytes memory packedData = abi.encode(address(target), targetCalldata);
+bytes memory taskData = abi.encodeWithSelector(
+    ITaskExecutionEnvironment.executeTask.selector,
+    packedData
+);
 
-// Check next execution block
-(bytes32[] memory hashes, uint64[] memory blocks) = taskManager.getNextBlocksForTasks([taskHash]);
+// Schedule the task with the rescheduling environment
+uint64 targetBlock = uint64(block.number + 2);
+(bool scheduled, uint256 executionCost, bytes32 taskId) = taskManager.scheduleTask(
+    reschedulingEnvironmentAddress, // Use the rescheduling environment address
+    100_000,                       // Gas limit
+    targetBlock,                   // Target block
+    type(uint256).max / 2,         // Maximum payment
+    taskData                       // Encoded task data
+);
+
+require(scheduled, "Task scheduling failed");
 ```
 
-## Additional Notes
+### Task Cancellation and Authorization
 
-### Security Considerations
-1. Task execution requires sufficient bonds to cover gas costs
-2. Only task owners can modify or cancel their tasks
-3. Gas estimation should account for varying network conditions
+Cancellation of tasks is strictly controlled to prevent unauthorized modifications.
 
-### Design Decisions
-1. Block-based scheduling for deterministic execution timing
-2. Bond system ensures economic security
-3. Flexible scheduling allows for both one-time and recurring tasks
+#### Example: Cancelling a Task
 
-### Limitations
-1. Task execution is subject to block gas limits
-2. Schedule updates can only modify timing, not task data
-3. Tasks must be properly bonded before execution
+```solidity
+// Schedule a task as usual
+uint64 targetBlock = uint64(block.number + 10);
+(, , bytes32 taskId) = taskManager.scheduleTask(
+    executionEnvironmentAddress,
+    100_000,
+    targetBlock,
+    type(uint256).max / 2,
+    taskData
+);
+
+// Later, the owner can cancel the task
+taskManager.cancelTask(taskId);
+
+// To grant cancellation authority to another address
+address authorizedCanceller = 0xAbc...123;
+taskManager.addTaskCanceller(taskId, authorizedCanceller);
+
+// The authorized address can now cancel the task
+vm.prank(authorizedCanceller);
+taskManager.cancelTask(taskId);
+```
+
+### Economic Security & Fee Calculations
+
+The system employs a dynamic fee model for fair compensation and economic security through bonding.
+
+#### Example: Estimating and Handling Fees
+
+```solidity
+// Estimate the cost of executing a task before scheduling
+uint256 estimatedCost = taskManager.estimateCost(targetBlock, 100_000);
+require(estimatedCost > 0, "Estimated cost must be positive");
+
+// After task execution, fees are automatically distributed
+uint256 feesEarned = taskManager.executeTasks(payoutAddress, 0);
+require(feesEarned > 0, "Execution should earn fees");
+```
+
+## Summary
+
+The Task Manager system provides a robust framework for scheduling and executing on-chain tasks. By following the standardized task encoding process and understanding the separation between scheduling and execution, developers can confidently integrate with the system while leveraging advanced features such as rescheduling and dynamic fee calculations.
+
+For further information, please refer to the source code and internal test suites available in our repository.
+
