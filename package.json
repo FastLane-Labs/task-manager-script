@@ -16,7 +16,8 @@
     "demo": "tsx ./src/index.ts",
     "build": "tsc",
     "env": "tsx ./src/scripts/getEnvironment.ts",
-    "addresses": "tsx ./src/scripts/getAddresses.ts"
+    "addresses": "tsx ./src/scripts/getAddresses.ts",
+    "bonds": "tsx ./src/scripts/getPolicyBonds.ts"
   },
   "type": "module",
   "dependencies": {

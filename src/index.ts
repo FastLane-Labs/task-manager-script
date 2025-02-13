@@ -1,4 +1,4 @@
-import { encodeFunctionData, createPublicClient, http, formatUnits, createWalletClient } from "viem";
+import { encodeFunctionData, createPublicClient, http, formatUnits, createWalletClient, encodePacked } from "viem";
 import { TaskManagerHelper } from "./utils/taskManager";
 import { AddressHubHelper } from "./utils/addressHub";
 import { CHAIN, eoa } from "./constants";
@@ -37,11 +37,18 @@ async function main() {
   console.log(chalk.blue('Task Manager:'), chalk.yellow(taskManagerAddress));
   console.log(chalk.blue('Shmonad:     '), chalk.yellow(shmonadAddress));
 
-  // Create TaskManager helper
+  // Create wallet client
+  const walletClient = createWalletClient({
+    account: eoa,
+    chain: CHAIN,
+    transport: http(RPC_URL)
+  });
+
+  // Create TaskManager helper with wallet client
   const taskManager = new TaskManagerHelper(
     taskManagerAddress,
     publicClient,
-    {} as any // We'll need to add proper wallet client for writes
+    walletClient  // Add wallet client
   );
 
   // Get current state
@@ -54,13 +61,6 @@ async function main() {
   // Get account nonce
   const nonce = await taskManager.contract.read.S_accountNonces([eoa.address]) as bigint;
   console.log(chalk.blue('Nonce:'), chalk.green(nonce.toString()));
-
-  // Create wallet client
-  const walletClient = createWalletClient({
-    account: eoa,
-    chain: CHAIN,
-    transport: http(RPC_URL)
-  });
 
   // Create Shmonad helper
   const shmonad = new ShmonadHelper(
@@ -81,15 +81,44 @@ async function main() {
   console.log(chalk.blue('Policy Unbonding Amount:'), chalk.green(`${formatUnits(policyBond.unbonding, 18)} shMON`));
   console.log(chalk.blue('Policy Bonded Amount:'), chalk.green(`${formatUnits(policyBond.bonded, 18)} shMON`));
 
+  // Get execution environment template
+  const executionEnv = await taskManager.contract.read.EXECUTION_ENV_TEMPLATE() as Address;
+  console.log(chalk.blue('Execution Environment:'), chalk.yellow(executionEnv));
+
   // First calculate estimated cost
+  const dummyCall = encodeFunctionData({
+    abi: [{
+      type: 'function',
+      name: 'dummyFunction',
+      inputs: [],
+      outputs: [],
+      stateMutability: 'nonpayable'
+    }],
+    functionName: 'dummyFunction',
+    args: []
+  });
+
+  // Pack target and calldata for execution environment
+  const packedData = encodePacked(
+    ['address', 'bytes'],
+    [shmonadAddress, dummyCall]
+  );
+
+  // Encode for execution environment
   const task = {
     from: eoa.address,
     gas: BigInt(100000),
-    target: shmonadAddress,
+    target: executionEnv, // Use execution environment template instead of task manager
     data: encodeFunctionData({
-      abi: shmonadAbi,
-      functionName: "unbond",
-      args: [policyId, eoa.address, BigInt(10000000000000)],
+      abi: [{
+        type: 'function',
+        name: 'executeTask',
+        inputs: [{ type: 'bytes', name: 'taskData' }],
+        outputs: [{ type: 'bool', name: 'success' }],
+        stateMutability: 'nonpayable'
+      }],
+      functionName: 'executeTask',
+      args: [packedData]
     }),
     nonce,
   };
@@ -97,7 +126,7 @@ async function main() {
   const schedule = {
     startBlock: currentBlock + BigInt(10),
     interval: BigInt(100),
-    executions: 10,
+    executions: 1, // Just one execution for testing
     active: true,
     deadline: currentBlock + BigInt(5000),
   };
@@ -131,8 +160,17 @@ async function main() {
     schedule,
   };
 
-  // Note: Actual scheduling would require wallet setup
-  console.log(chalk.yellow('\nNote: Task scheduling requires wallet setup'));
+  // Schedule the task
+  try {
+    console.log(chalk.blue('\nScheduling task...'));
+    const txHash = await taskManager.scheduleTask(taskDefinition);
+    console.log(chalk.green('\nWaiting for transaction confirmation...'));
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(chalk.green('Task scheduled successfully!'));
+  } catch (error) {
+    console.error(chalk.red('Failed to schedule task:'), error);
+    return;
+  }
 }
 
 main().catch((error) => {
