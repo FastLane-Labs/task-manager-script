@@ -124,11 +124,10 @@ async function main() {
   };
 
   const schedule = {
-    startBlock: currentBlock + BigInt(10),
-    interval: BigInt(100),
-    executions: 1, // Just one execution for testing
+    startBlock: currentBlock + BigInt(10),  // 10 blocks (~20 seconds) in the future
+    executions: 1,                          // Single execution
     active: true,
-    deadline: currentBlock + BigInt(5000),
+    deadline: currentBlock + BigInt(5000),  // ~2.8 hours deadline
   };
 
   console.log(chalk.blue('\nSimulating task scheduling...'));
