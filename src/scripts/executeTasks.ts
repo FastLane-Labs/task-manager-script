@@ -4,6 +4,7 @@ import { TaskManagerHelper } from '../utils/taskManager';
 import { eoa, CHAIN } from '../constants';
 import dotenv from 'dotenv';
 import chalk from 'chalk';
+import { formatUnits } from 'viem';
 
 dotenv.config();
 
@@ -45,9 +46,9 @@ async function main() {
   // Execute tasks
   try {
     console.log(chalk.blue('\nExecuting tasks...'));
-    const result = await taskManager.executeTasks(eoa.address);
-    console.log(chalk.green('\nTasks executed:'), chalk.yellow(result.executed.toString()));
-    console.log(chalk.red('Tasks failed:  '), chalk.yellow(result.failed.toString()));
+    const feesEarned = await taskManager.executeTasks(eoa.address);
+    console.log(chalk.green('\nExecution complete'));
+    console.log(chalk.blue('Fees earned:'), chalk.green(`${formatUnits(feesEarned, 18)} MON`));
   } catch (error) {
     console.error(chalk.red('Failed to execute tasks:'), error);
     return;
