@@ -1,0 +1,12 @@
+export enum ContractPointer {
+  NULL = 0,
+  SHMONAD = 1,
+  VALIDATOR_AUCTION = 2,
+  ATLAS = 3,
+  CLEARING_HOUSE = 4,
+  TASK_MANAGER = 5,
+  CAPITAL_ALLOCATOR = 6,
+  STAKING_HUB = 7,
+  ENTRYPOINT_4337 = 8,
+  PAYMASTER_4337 = 9
+} 
