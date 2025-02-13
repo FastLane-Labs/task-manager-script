@@ -1,133 +1,144 @@
-import { encodeFunctionData, Hex } from "viem";
-import { taskManagerContract, shMonadContract } from "./contracts";
-import { eoa, shMonadAddress, taskManagerAddress } from "./constants";
+import { encodeFunctionData, createPublicClient, http, formatUnits, createWalletClient } from "viem";
+import { TaskManagerHelper } from "./utils/taskManager";
+import { AddressHubHelper } from "./utils/addressHub";
+import { CHAIN, eoa } from "./constants";
 import shmonadAbi from "./abi/shmonad.json";
-import taskManagerAbi from "./abi/taskmanager.json";
-import { publicClient, sendTransaction } from "./user";
-import { PolicyBond } from "./types";
+import dotenv from "dotenv";
+import chalk from "chalk";
+import { PolicyBond, TaskDefinition } from "./types";
+import { ShmonadHelper } from "./utils/shmonad";
 
-//general
-const currentBlockNumber = await publicClient.getBlockNumber();
-console.log("Current block number:", currentBlockNumber);
+dotenv.config();
 
-//Task Manager
-const policyId = await taskManagerContract.read.POLICY_ID();
-console.log("Policy ID:", policyId);
+const ADDRESS_HUB = process.env.ADDRESS_HUB;
+const RPC_URL = process.env.RPC_URL;
 
-const nonce = await taskManagerContract.read.getAccountNonce([eoa.address]);
-console.log("Nonce:", nonce);
-
-//ShMonad
-//The task manager is an agent (with a policy) in the shMonad contract, so you need to 
-//bond shMON to the policy to schedule tasks
-const depositedAmount = await shMonadContract.read.balanceOf([eoa.address]);
-console.log("shMonad Deposited Amount:", depositedAmount);
-
-const policyBond = await shMonadContract.read.getPolicyBond([policyId, eoa.address]) as PolicyBond;
-console.log("Policy Unbonding Amount:", policyBond.unbonding);
-console.log("Policy Bonded Amount:", policyBond.bonded);
-
-//Schedule a task
-//Scheduling a task to unbond my shMON from the Task Manager Policy, but this could
-//be for activity like dollar cost averaging, recurring payments, etc.
-const unbondAmount = BigInt(10000000000000);
-const data = encodeFunctionData({
-    abi: shmonadAbi,
-    functionName: "unbond",
-    args: [policyId, unbondAmount],
-});
-
-//Build the task
-const task = {
-    from: eoa.address,
-    gas: BigInt(100000),
-    target: shMonadAddress,
-    data,
-    nonce,
+if (!ADDRESS_HUB || !RPC_URL) {
+  throw new Error('Required environment variables not found');
 }
 
-//Schedule the task
-const schedule = {
-    startBlock: currentBlockNumber+BigInt(10),
+async function main() {
+  console.log(chalk.blue('Creating clients...'));
+  const publicClient = createPublicClient({
+    chain: CHAIN,
+    transport: http(RPC_URL)
+  });
+
+  // Get contract addresses from hub
+  const addressHub = new AddressHubHelper(
+    ADDRESS_HUB as `0x${string}`,
+    publicClient
+  );
+
+  const taskManagerAddress = await addressHub.getTaskManagerAddress();
+  const shmonadAddress = await addressHub.getShmonadAddress();
+
+  console.log(chalk.blue('Contract Addresses:'));
+  console.log(chalk.blue('Task Manager:'), chalk.yellow(taskManagerAddress));
+  console.log(chalk.blue('Shmonad:     '), chalk.yellow(shmonadAddress));
+
+  // Create TaskManager helper
+  const taskManager = new TaskManagerHelper(
+    taskManagerAddress,
+    publicClient,
+    {} as any // We'll need to add proper wallet client for writes
+  );
+
+  // Get current state
+  const currentBlock = await publicClient.getBlockNumber();
+  console.log(chalk.blue('\nCurrent block:'), chalk.green(currentBlock.toString()));
+
+  const policyId = await taskManager.contract.read.POLICY_ID() as bigint;
+  console.log(chalk.blue('Policy ID:'), chalk.green(policyId.toString()));
+
+  // Get account nonce
+  const nonce = await taskManager.contract.read.S_accountNonces([eoa.address]) as bigint;
+  console.log(chalk.blue('Nonce:'), chalk.green(nonce.toString()));
+
+  // Create wallet client
+  const walletClient = createWalletClient({
+    account: eoa,
+    chain: CHAIN,
+    transport: http(RPC_URL)
+  });
+
+  // Create Shmonad helper
+  const shmonad = new ShmonadHelper(
+    shmonadAddress,
+    publicClient,
+    walletClient
+  );
+
+  // Get balances
+  const nativeBalance = await shmonad.getNativeBalance(eoa.address);
+  const depositedAmount = await shmonad.getBalance(eoa.address);
+  
+  console.log(chalk.blue('\nBalances:'));
+  console.log(chalk.blue('Native Balance:'), chalk.green(`${formatUnits(nativeBalance, 18)} MON`));
+  console.log(chalk.blue('shMonad Balance:'), chalk.green(`${formatUnits(depositedAmount, 18)} shMON`));
+
+  const policyBond = await shmonad.getPolicyBond(policyId, eoa.address);
+  console.log(chalk.blue('Policy Unbonding Amount:'), chalk.green(`${formatUnits(policyBond.unbonding, 18)} shMON`));
+  console.log(chalk.blue('Policy Bonded Amount:'), chalk.green(`${formatUnits(policyBond.bonded, 18)} shMON`));
+
+  // First calculate estimated cost
+  const task = {
+    from: eoa.address,
+    gas: BigInt(100000),
+    target: shmonadAddress,
+    data: encodeFunctionData({
+      abi: shmonadAbi,
+      functionName: "unbond",
+      args: [policyId, eoa.address, BigInt(10000000000000)],
+    }),
+    nonce,
+  };
+
+  const schedule = {
+    startBlock: currentBlock + BigInt(10),
     interval: BigInt(100),
     executions: 10,
     active: true,
-    deadline: currentBlockNumber + BigInt(5000),
-}
+    deadline: currentBlock + BigInt(5000),
+  };
 
-//Build the task definition
-const taskDefinition = {
+  console.log(chalk.blue('\nSimulating task scheduling...'));
+  const estimatedCost = await taskManager.estimateTaskCost(schedule.startBlock, task.gas);
+  console.log(chalk.blue('Estimated cost:'), chalk.green(`${formatUnits(estimatedCost, 18)} MON`));
+
+  // Then check bond requirements (should be greater than estimated cost)
+  const requiredBond = estimatedCost * BigInt(2); // 2x safety margin
+  
+  if (!await shmonad.waitForSufficientBond(policyId, eoa.address, requiredBond)) {
+    console.log(chalk.yellow('\nWarning: Insufficient bonded balance. Need to depositAndBond first.'));
+    try {
+      const txHash = await shmonad.depositAndBond(
+        policyId,
+        eoa.address,
+        requiredBond
+      );
+      console.log(chalk.green('\nWaiting for transaction confirmation...'));
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      console.log(chalk.green('Transaction confirmed!'));
+    } catch (error) {
+      console.error(chalk.red('Failed to deposit and bond:'), error);
+      return;
+    }
+  }
+
+  const taskDefinition: TaskDefinition = {
     task,
     schedule,
+  };
+
+  // Note: Actual scheduling would require wallet setup
+  console.log(chalk.yellow('\nNote: Task scheduling requires wallet setup'));
 }
 
-//Simulate the task to make sure it works
-const scheduleSimulate  = await taskManagerContract.simulate.scheduleTask([taskDefinition]);
-const taskHash = scheduleSimulate.result;
-console.log("Task Hash:", taskHash);
-
-//Build the task data
-const scheduleTaskData = encodeFunctionData({
-    abi: taskManagerAbi,
-    functionName: "scheduleTask",
-    args: [taskDefinition],
+main().catch((error) => {
+  console.error(chalk.red('Error:'), error);
+  process.exit(1);
 });
-
-//Send it!
-const scheduleTaskHash = await sendTransaction(taskManagerAddress, scheduleTaskData);
-console.log("Schedule Tx Hash:", scheduleTaskHash);
-
-//Retrieve your tasks
-const accountTasks = await taskManagerContract.read.getAccountTasks([eoa.address]) as Hex[];
-const lastTaskHash = accountTasks[accountTasks.length-1] as Hex;
-console.log("Last Task Hash:", lastTaskHash);
-
-//Schedule the new task
-const newSchedule = {
-    startBlock: currentBlockNumber+BigInt(10),
-    interval: BigInt(1000), //UPDATED INTERVAL TO 1000 blocks
-    executions: 10,
-    active: true,
-    deadline: currentBlockNumber + BigInt(5000),
-}
-
-//Build the new task schedule
-const newTaskDefinition = {
-    task,
-    schedule: newSchedule,
-}
-
-//Update the task schedule
-const updateTaskSchedule = await taskManagerContract.simulate.updateTaskSchedule([lastTaskHash, newTaskDefinition]);
-
-//Build the task data
-const updateTaskScheduleData = encodeFunctionData({
-    abi: taskManagerAbi,
-    functionName: "updateTaskSchedule",
-    args: [lastTaskHash, newTaskDefinition],
-});
-
-//Send it!
-const updateTaskScheduleHash = await sendTransaction(taskManagerAddress, updateTaskScheduleData);
-console.log("Update Task Schedule Tx Hash:", updateTaskScheduleHash);
-
-//Cancel a task
-const cancelSimulate = await taskManagerContract.simulate.cancelTask([lastTaskHash]);
-
-//Build the task data
-const cancelTaskData = encodeFunctionData({
-    abi: taskManagerAbi,
-    functionName: "cancelTask",
-    args: [lastTaskHash],
-});
-
-//Send it!
-const cancelTaskHash = await sendTransaction(taskManagerAddress, cancelTaskData);
-console.log("Cancel Tx Hash:", cancelTaskHash);
-
-//Retrieve the task info
-const taskInfo = await taskManagerContract.read.getTaskInfo([lastTaskHash]);
-console.log(taskInfo);
 
 
 

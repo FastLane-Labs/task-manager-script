@@ -1,29 +1,28 @@
-import { Hex } from "viem";
+import { Address } from 'viem';
+
+export interface PolicyBond {
+  unbonding: bigint;
+  bonded: bigint;
+}
 
 export interface Task {
-  from: Hex;
+  from: Address;
   gas: bigint;
-  target: Hex;
-  data: Hex;
+  target: Address;
+  data: `0x${string}`;
   nonce: bigint;
 }
 
-export interface TaskSchedule {
+export interface Schedule {
   startBlock: bigint;
   interval: bigint;
-  executions: bigint;
+  executions: number;
   active: boolean;
   deadline: bigint;
 }
 
 export interface TaskDefinition {
   task: Task;
-  schedule: TaskSchedule;
-}
-
-export interface PolicyBond {
-  bonded: bigint;
-  unbonding: bigint;
-  lastAccessedBlock: bigint;
+  schedule: Schedule;
 }
 

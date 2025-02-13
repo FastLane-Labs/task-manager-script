@@ -36,7 +36,7 @@ export class AddressHubHelper {
 
   async getPointerFromAddress(address: Address): Promise<ContractPointer> {
     const pointer = await this.contract.read.getPointerFromAddress([address]) as bigint;
-    return pointer as ContractPointer;
+    return Number(pointer) as ContractPointer;
   }
 
   async isFastLane(address: Address): Promise<boolean> {
