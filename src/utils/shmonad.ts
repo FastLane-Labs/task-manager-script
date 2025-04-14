@@ -3,8 +3,8 @@ import {
   PublicClient,
   WalletClient,
   getContract,
-  parseUnits,
-  encodeFunctionData
+  encodeFunctionData,
+  maxUint256,  
 } from 'viem';
 import shmonadAbi from '../abi/shmonad.json';
 import { PolicyBond } from '../types';
@@ -12,7 +12,7 @@ import chalk from 'chalk';
 import { formatUnits } from 'viem';
 
 export class ShmonadHelper {
-  public contract;
+  public contract: any; // Use any to bypass TypeScript strictness
   private publicClient: PublicClient;
   private walletClient?: WalletClient;
 
@@ -23,12 +23,14 @@ export class ShmonadHelper {
   ) {
     this.publicClient = publicClient;
     this.walletClient = walletClient;
+    
     this.contract = getContract({
       address,
       abi: shmonadAbi,
       client: {
         public: publicClient,
-        wallet: walletClient
+        wallet: walletClient,
+        account: walletClient?.account
       }
     });
   }
@@ -90,7 +92,7 @@ export class ShmonadHelper {
   async depositAndBond(
     policyId: bigint,
     bondRecipient: Address,
-    amountToBond: bigint
+    depositAmount: bigint
   ): Promise<`0x${string}`> {
     if (!this.walletClient) {
       throw new Error('Wallet client required for transactions');
@@ -98,8 +100,8 @@ export class ShmonadHelper {
 
     console.log(chalk.blue('\nSubmitting depositAndBond transaction...'));
     const hash = await this.contract.write.depositAndBond(
-      [policyId, bondRecipient, amountToBond],
-      { value: amountToBond }
+      [policyId, bondRecipient, maxUint256],
+      { value: depositAmount }
     );
     
     console.log(chalk.green('Transaction submitted:'), chalk.yellow(hash));

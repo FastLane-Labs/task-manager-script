@@ -1,4 +1,4 @@
-import { encodeFunctionData, createPublicClient, http, formatUnits, createWalletClient, encodePacked } from "viem";
+import { encodeFunctionData, createPublicClient, http, formatUnits, createWalletClient, encodePacked, Address } from "viem";
 import { TaskManagerHelper } from "./utils/taskManager";
 import { AddressHubHelper } from "./utils/addressHub";
 import { CHAIN, eoa } from "./constants";
@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import chalk from "chalk";
 import { PolicyBond, TaskDefinition } from "./types";
 import { ShmonadHelper } from "./utils/shmonad";
+import { decodeEventLog, Hex, Log } from "viem";
 
 dotenv.config();
 
@@ -17,8 +18,16 @@ if (!ADDRESS_HUB || !RPC_URL) {
   throw new Error('Required environment variables not found');
 }
 
+// Define interface for TaskScheduled event
+interface TaskScheduledEvent {
+  eventName: 'TaskScheduled';
+  args: {
+    taskId: Hex;
+    [key: string]: unknown;
+  } | readonly unknown[];
+}
+
 async function main() {
-  console.log(chalk.blue('Creating clients...'));
   const publicClient = createPublicClient({
     chain: CHAIN,
     transport: http(RPC_URL)
@@ -33,9 +42,9 @@ async function main() {
   const taskManagerAddress = await addressHub.getTaskManagerAddress();
   const shmonadAddress = await addressHub.getShmonadAddress();
 
-  console.log(chalk.blue('Contract Addresses:'));
-  console.log(chalk.blue('Task Manager:'), chalk.yellow(taskManagerAddress));
-  console.log(chalk.blue('Shmonad:     '), chalk.yellow(shmonadAddress));
+  console.log(chalk.blue('Contract Addresses'));
+  console.log(chalk.blue('Task Manager      :'), chalk.yellow(taskManagerAddress));
+  console.log(chalk.blue('Shmonad           :'), chalk.yellow(shmonadAddress));
 
   // Create wallet client
   const walletClient = createWalletClient({
@@ -58,10 +67,6 @@ async function main() {
   const policyId = await taskManager.contract.read.POLICY_ID() as bigint;
   console.log(chalk.blue('Policy ID:'), chalk.green(policyId.toString()));
 
-  // Get account nonce
-  const nonce = await taskManager.contract.read.S_accountNonces([eoa.address]) as bigint;
-  console.log(chalk.blue('Nonce:'), chalk.green(nonce.toString()));
-
   // Create Shmonad helper
   const shmonad = new ShmonadHelper(
     shmonadAddress,
@@ -73,17 +78,17 @@ async function main() {
   const nativeBalance = await shmonad.getNativeBalance(eoa.address);
   const depositedAmount = await shmonad.getBalance(eoa.address);
   
-  console.log(chalk.blue('\nBalances:'));
-  console.log(chalk.blue('Native Balance:'), chalk.green(`${formatUnits(nativeBalance, 18)} MON`));
-  console.log(chalk.blue('shMonad Balance:'), chalk.green(`${formatUnits(depositedAmount, 18)} shMON`));
+  console.log(chalk.blue('Balances'));
+  console.log(chalk.blue('Native Balance         :'), chalk.green(`${formatUnits(nativeBalance, 18)} MON`));
+  console.log(chalk.blue('shMonad Balance        :'), chalk.green(`${formatUnits(depositedAmount, 18)} shMON`));
 
   const policyBond = await shmonad.getPolicyBond(policyId, eoa.address);
   console.log(chalk.blue('Policy Unbonding Amount:'), chalk.green(`${formatUnits(policyBond.unbonding, 18)} shMON`));
-  console.log(chalk.blue('Policy Bonded Amount:'), chalk.green(`${formatUnits(policyBond.bonded, 18)} shMON`));
+  console.log(chalk.blue('Policy Bonded Amount   :'), chalk.green(`${formatUnits(policyBond.bonded, 18)} shMON`));
 
   // Get execution environment template
   const executionEnv = await taskManager.contract.read.EXECUTION_ENV_TEMPLATE() as Address;
-  console.log(chalk.blue('Execution Environment:'), chalk.yellow(executionEnv));
+  console.log(chalk.blue('Execution Environment  :'), chalk.yellow(executionEnv));
 
   // First calculate estimated cost
   const dummyCall = encodeFunctionData({
@@ -120,7 +125,7 @@ async function main() {
       functionName: 'executeTask',
       args: [packedData]
     }),
-    nonce,
+    // Nonce is handled automatically by viem
   };
 
   const schedule = {
@@ -153,18 +158,56 @@ async function main() {
       return;
     }
   }
-
-  const taskDefinition: TaskDefinition = {
-    task,
-    schedule,
-  };
-
   // Schedule the task
   try {
     console.log(chalk.blue('\nScheduling task...'));
-    const txHash = await taskManager.scheduleTask(taskDefinition);
+    
+    // First get the transaction hash
+    const txHash = await taskManager.scheduleTaskRaw(
+      executionEnv, 
+      task.gas, 
+      schedule.startBlock, 
+      requiredBond, 
+      packedData
+    );
+    console.log(chalk.blue('Transaction Hash:'), chalk.yellow(txHash));
+    
+    // Then wait for confirmation
     console.log(chalk.green('\nWaiting for transaction confirmation...'));
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    
+    // Parse the TaskScheduled event from the logs using viem
+    const taskAbi = taskManager.contract.abi;
+    const taskScheduledLog = receipt.logs.find(log => {
+      try {
+        const event = decodeEventLog({
+          abi: taskAbi,
+          eventName: 'TaskScheduled',
+          data: log.data,
+          topics: log.topics,
+        });
+        return !!event;
+      } catch {
+        return false;
+      }
+    });
+    
+    if (taskScheduledLog) {
+      const taskEvent = decodeEventLog({
+        abi: taskAbi,
+        eventName: 'TaskScheduled',
+        data: taskScheduledLog.data,
+        topics: taskScheduledLog.topics,
+      }) as TaskScheduledEvent;
+      
+      if (taskEvent.args && 
+          typeof taskEvent.args === 'object' && 
+          !Array.isArray(taskEvent.args) &&
+          'taskId' in taskEvent.args) {
+        console.log(chalk.blue('Task ID:'), chalk.yellow(taskEvent.args.taskId));
+      }
+    }
+    
     console.log(chalk.green('Task scheduled successfully!'));
   } catch (error) {
     console.error(chalk.red('Failed to schedule task:'), error);

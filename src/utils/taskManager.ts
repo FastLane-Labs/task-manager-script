@@ -35,6 +35,20 @@ export class TaskManagerHelper {
     return await this.contract.read.estimateCost([targetBlock, gasLimit]) as bigint;
   }
 
+  // New method that just returns the transaction hash
+  async scheduleTaskRaw(
+    environment: Address,
+    gasLimit: bigint,
+    targetBlock: bigint, 
+    maxPayment: bigint,
+    taskCallData: `0x${string}`
+  ): Promise<`0x${string}`> {
+    return await this.contract.write.scheduleTask(
+      [environment, gasLimit, targetBlock, maxPayment, taskCallData],
+      { value: maxPayment }
+    );
+  }
+
   async scheduleTask(
     environment: Address,
     gasLimit: bigint,
