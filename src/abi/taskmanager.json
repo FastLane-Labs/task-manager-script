@@ -3,35 +3,21 @@
     "type": "constructor",
     "inputs": [
       {
-        "name": "_governance",
+        "name": "shMonad",
         "type": "address",
         "internalType": "address"
       },
       {
-        "name": "_escrowDuration",
-        "type": "uint48",
-        "internalType": "uint48"
-      },
-      {
-        "name": "_addressHub",
-        "type": "address",
-        "internalType": "address"
+        "name": "policyId",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "nonpayable"
   },
   {
-    "type": "function",
-    "name": "ADDRESS_HUB",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
+    "type": "receive",
+    "stateMutability": "payable"
   },
   {
     "type": "function",
@@ -113,27 +99,21 @@
   },
   {
     "type": "function",
-    "name": "SMALL_GAS",
+    "name": "SHMONAD",
     "inputs": [],
     "outputs": [
-      {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "S_accountNonces",
-    "inputs": [
       {
         "name": "",
         "type": "address",
         "internalType": "address"
       }
     ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SMALL_GAS",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
@@ -265,6 +245,11 @@
     "inputs": [
       {
         "name": "",
+        "type": "uint8",
+        "internalType": "enum Size"
+      },
+      {
+        "name": "",
         "type": "uint64",
         "internalType": "uint64"
       },
@@ -274,6 +259,19 @@
         "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "T_currentTaskId",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
@@ -382,15 +380,44 @@
   },
   {
     "type": "function",
+    "name": "getEnvironment",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "taskNonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "implementation",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "taskData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "environment",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getNextExecutionBlockInRange",
     "inputs": [
       {
-        "name": "startBlock",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "endBlock",
+        "name": "lookahead",
         "type": "uint64",
         "internalType": "uint64"
       }
@@ -403,6 +430,19 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getNextExecutionBlockInRangeRevert",
+    "inputs": [
+      {
+        "name": "endBlock",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -478,16 +518,16 @@
   },
   {
     "type": "function",
-    "name": "governance",
-    "inputs": [],
-    "outputs": [
+    "name": "initialize",
+    "inputs": [
       {
-        "name": "",
+        "name": "deployer",
         "type": "address",
         "internalType": "address"
       }
     ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -529,6 +569,38 @@
   },
   {
     "type": "function",
+    "name": "nonces",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "owner",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "removeEnvironmentCanceller",
     "inputs": [
       {
@@ -560,6 +632,13 @@
         "internalType": "address"
       }
     ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "renounceOwnership",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -647,6 +726,68 @@
     "stateMutability": "payable"
   },
   {
+    "type": "function",
+    "name": "scheduleWithBond",
+    "inputs": [
+      {
+        "name": "implementation",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "taskGasLimit",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "targetBlock",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "maxPayment",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "taskCallData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "scheduled",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "executionCost",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "taskId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferOwnership",
+    "inputs": [
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
     "type": "event",
     "name": "ExecutionEnvironmentCreated",
     "inputs": [
@@ -692,6 +833,38 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Initialized",
+    "inputs": [
+      {
+        "name": "version",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OwnershipTransferred",
+    "inputs": [
+      {
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -930,7 +1103,7 @@
   },
   {
     "type": "error",
-    "name": "BondTransferFailed",
+    "name": "BoostYieldFailed",
     "inputs": [
       {
         "name": "from",
@@ -951,12 +1124,17 @@
   },
   {
     "type": "error",
-    "name": "ForwardingError",
+    "name": "ExecutorReimbursementFailed",
     "inputs": [
       {
-        "name": "nestedError",
-        "type": "bytes4",
-        "internalType": "bytes4"
+        "name": "from",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },
@@ -971,6 +1149,22 @@
       },
       {
         "name": "actual",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidAccountNonce",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "currentNonce",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -1004,8 +1198,24 @@
   },
   {
     "type": "error",
-    "name": "InvalidGovernanceAddress",
+    "name": "InvalidInitialization",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidPaymentAmount",
+    "inputs": [
+      {
+        "name": "expected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "provided",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",
@@ -1020,6 +1230,38 @@
   },
   {
     "type": "error",
+    "name": "InvalidPolicyId",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidShMonadAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "LookaheadExceedsMaxScheduleDistance",
+    "inputs": [
+      {
+        "name": "lookahead",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NextExecutionBlock",
+    "inputs": [
+      {
+        "name": "blockNumber",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "NoActiveTask",
     "inputs": []
   },
@@ -1027,6 +1269,33 @@
     "type": "error",
     "name": "NoRecursiveExecution",
     "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotInitializing",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OwnableInvalidOwner",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "OwnableUnauthorizedAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
   },
   {
     "type": "error",
@@ -1217,6 +1486,22 @@
         "name": "owner",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ValidatorReimbursementFailed",
+    "inputs": [
+      {
+        "name": "from",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   }
