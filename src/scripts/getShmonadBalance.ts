@@ -57,18 +57,6 @@ async function main(addressToQuery?: string) {
     const nativeBalance = await shmonad.getNativeBalance(targetAddress as `0x${string}`);
     console.log(chalk.blue('Native Token Balance:'), chalk.green(`${formatUnits(nativeBalance, 18)} MON`));
 
-    // Log raw RPC call format - this was requested in the user query
-    console.log(chalk.blue('\nRaw RPC call equivalent:'));
-    const rpcCall = {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_call',
-      params: [{
-        to: shmonadAddress,
-        data: `0x70a08231000000000000000000000000${targetAddress.substring(2).toLowerCase()}`
-      }, 'latest']
-    };
-
     return {
       address: targetAddress,
       shmonadBalance: balance,
