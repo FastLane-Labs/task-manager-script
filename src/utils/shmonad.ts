@@ -4,12 +4,12 @@ import {
   WalletClient,
   getContract,
   encodeFunctionData,
-  maxUint256,  
+  maxUint256,
+  formatUnits
 } from 'viem';
 import shmonadAbi from '../abi/shmonad.json';
 import { PolicyBond } from '../types';
 import chalk from 'chalk';
-import { formatUnits } from 'viem';
 
 export class ShmonadHelper {
   public contract: any; // Use any to bypass TypeScript strictness

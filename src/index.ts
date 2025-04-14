@@ -1,13 +1,23 @@
-import { encodeFunctionData, createPublicClient, http, formatUnits, createWalletClient, encodePacked, Address } from "viem";
-import { TaskManagerHelper } from "./utils/taskManager";
-import { AddressHubHelper } from "./utils/addressHub";
-import { CHAIN, eoa } from "./constants";
-import shmonadAbi from "./abi/shmonad.json";
+import { 
+  encodeFunctionData, 
+  createPublicClient, 
+  http, 
+  formatUnits, 
+  createWalletClient, 
+  encodePacked, 
+  Address,
+  decodeEventLog, 
+  Hex 
+} from "viem";
 import dotenv from "dotenv";
 import chalk from "chalk";
-import { PolicyBond, TaskDefinition } from "./types";
+
+// Local imports
+import { TaskManagerHelper } from "./utils/taskManager";
+import { AddressHubHelper } from "./utils/addressHub";
 import { ShmonadHelper } from "./utils/shmonad";
-import { decodeEventLog, Hex, Log } from "viem";
+import { CHAIN, eoa } from "./constants";
+import { TaskScheduledEvent } from "./types";
 
 dotenv.config();
 
@@ -16,15 +26,6 @@ const RPC_URL = process.env.RPC_URL;
 
 if (!ADDRESS_HUB || !RPC_URL) {
   throw new Error('Required environment variables not found');
-}
-
-// Define interface for TaskScheduled event
-interface TaskScheduledEvent {
-  eventName: 'TaskScheduled';
-  args: {
-    taskId: Hex;
-    [key: string]: unknown;
-  } | readonly unknown[];
 }
 
 async function main() {
