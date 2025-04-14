@@ -30,9 +30,9 @@ async function main() {
     const shmonadAddress = await addressHub.getContractAddress(ContractPointer.SHMONAD);
 
     // Print addresses
-    console.log(chalk.blue('\nContract Addresses:'));
-    console.log(chalk.blue('Task Manager:'), chalk.yellow(taskManagerAddress));
-    console.log(chalk.blue('Shmonad:     '), chalk.yellow(shmonadAddress));
+    console.log(chalk.blue('Contract Addresses'));
+    console.log(chalk.blue('Task Manager      :'), chalk.yellow(taskManagerAddress));
+    console.log(chalk.blue('Shmonad           :'), chalk.yellow(shmonadAddress));
 
     // Return addresses for use in other scripts
     return {
