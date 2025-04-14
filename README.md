@@ -181,6 +181,24 @@ These scripts are organized by functionality to help you navigate the Task Manag
 ### Task Management Scripts
 - `npm run task:execute` - Execute pending tasks
 
+## Prerequisites
+
+Before running the demo script, ensure you have:
+
+1. **MON tokens** - You'll need native MON tokens to:
+   - Pay for gas fees
+   - Deposit and bond for task scheduling
+   - The demo script automatically deposits and bonds if you have insufficient bonded balance
+
+2. **Private key configured** - Set up your private key in the `.env` file
+   
+3. **RPC access** - Ensure your RPC endpoint is working
+
+You can check your current balance with:
+```
+npm run shmonad:balance YOUR_ADDRESS
+```
+
 ## Task Scheduling Example
 
 The main demo (`src/index.ts`) shows how to:
@@ -240,6 +258,25 @@ const task = {
   // ... other task parameters
 };
 ```
+
+#### Task Execution
+
+After scheduling a task, it needs to be executed at the target block. There are two ways to execute tasks:
+
+1. **Automatic execution**: FastLane executors will automatically pick up and execute your task at the scheduled block
+
+2. **Manual execution**: You can execute tasks yourself using:
+```bash
+npm run task:execute
+```
+
+The execution script:
+- Connects to the TaskManager contract
+- Calls the `executeTasks` function
+- Provides gas for execution and earns execution fees
+- Reports success/failure and fees earned
+
+Task execution is an open process - anyone can execute pending tasks and earn the associated fees.
 
 ## Customizing for Real Tasks
 
