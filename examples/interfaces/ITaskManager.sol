@@ -11,9 +11,8 @@ interface ITaskManager {
                            TASK MANAGEMENT
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Schedule a task for future execution
-    /// @dev Requires sufficient shMONAD bonded to cover execution costs. Task will be assigned to an appropriate block
-    /// based on size and load balancing
+    /// @notice Schedule a task using either native MON or unbonded shMONAD
+    /// @dev If msg.value > 0, uses native MON, otherwise uses unbonded shMONAD
     /// @param implementation The contract address that is delegatecalled
     /// @param taskGasLimit The gas limit of the task's execution
     /// @param targetBlock The desired block number when the task should execute (actual execution block may vary based
@@ -32,6 +31,26 @@ interface ITaskManager {
     )
         external
         payable
+        returns (bool scheduled, uint256 executionCost, bytes32 taskId);
+
+    /// @notice Schedule a task using bonded shMONAD
+    /// @dev Withdraws bonded shMONAD directly to task manager
+    /// @param implementation The contract address that is delegatecalled
+    /// @param taskGasLimit The gas limit of the task's execution
+    /// @param targetBlock The desired block number when the task should execute
+    /// @param maxPayment Maximum payment willing to pay for execution
+    /// @param taskCallData The encoded function call data for the task
+    /// @return scheduled Bool for whether or not the task was scheduled
+    /// @return executionCost The estimated cost of the task
+    /// @return taskId Unique identifier for tracking the scheduled task
+    function scheduleWithBond(
+        address implementation,
+        uint256 taskGasLimit,
+        uint64 targetBlock,
+        uint256 maxPayment,
+        bytes calldata taskCallData
+    )
+        external
         returns (bool scheduled, uint256 executionCost, bytes32 taskId);
 
     /// @notice Reschedule the currently executing task
@@ -71,11 +90,16 @@ interface ITaskManager {
     /// @return cost The estimated cost of the task
     function estimateCost(uint64 targetBlock, uint256 taskGasLimit) external view returns (uint256 cost);
 
-    /// @notice Get the earliest block number in the range that has scheduled tasks
-    /// @param startBlock Start block (inclusive)
-    /// @param endBlock End block (inclusive)
-    /// @return The earliest block number with tasks, or 0 if none found
-    function getNextExecutionBlockInRange(uint64 startBlock, uint64 endBlock) external view returns (uint64);
+    /// @notice Get the earliest block number with scheduled tasks within the lookahead range
+    /// @dev Searches through all queues (Small, Medium, Large) using bitmap-based optimization.
+    ///      The function will revert if:
+    ///      1. lookahead > MAX_SCHEDULE_DISTANCE (business rule constraint)
+    ///      2. lookahead + block.number would overflow uint64 (technical constraint)
+    /// @param lookahead Number of blocks to look ahead from current block. Must not exceed MAX_SCHEDULE_DISTANCE
+    /// @return The earliest block number with tasks, or 0 if none found in range
+    /// @custom:throws TaskValidation_TargetBlockTooFar if lookahead > MAX_SCHEDULE_DISTANCE
+    /// @custom:throws LookaheadExceedsMaxScheduleDistance if lookahead + block.number would overflow
+    function getNextExecutionBlockInRange(uint64 lookahead) external view returns (uint64);
 
     /// @notice Get metadata about a task
     /// @param taskId ID of the task to query
@@ -101,4 +125,21 @@ interface ITaskManager {
     /// @param taskId The task ID used to verify ownership and get environment
     /// @param canceller The address to deauthorize
     function removeEnvironmentCanceller(bytes32 taskId, address canceller) external;
+
+    /// @notice Returns the environment address for the given owner, nonce, implementation, and task data.
+    ///         Does not attempt to create the environment – if it isn't deployed, returns address(0).
+    /// @param owner The owner of the environment.
+    /// @param taskNonce The task nonce for this environment.
+    /// @param implementation Optional custom implementation (use address(0) for default).
+    /// @param taskData The task data embedded in code.
+    /// @return environment The deployed environment address or address(0) if not deployed.
+    function getEnvironment(
+        address owner,
+        uint256 taskNonce,
+        address implementation,
+        bytes memory taskData
+    )
+        external
+        view
+        returns (address environment);
 }
