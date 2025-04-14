@@ -17,7 +17,7 @@ const shMonadAddress = process.env.SHMONAD as Hex;
 
 const CHAIN: Chain = {
   id: Number(chain),
-  name: 'Monad Devnet',
+  name: 'Monad Testnet',
   nativeCurrency: {
     decimals: 18,
     name: 'Monad',

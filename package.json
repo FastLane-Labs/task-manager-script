@@ -13,12 +13,16 @@
     "chalk": "^5.3.0"
   },
   "scripts": {
-    "demo": "tsx ./src/index.ts",
     "build": "tsc",
-    "env": "tsx ./src/scripts/getEnvironment.ts",
-    "addresses": "tsx ./src/scripts/getAddresses.ts",
-    "bonds": "tsx ./src/scripts/getPolicyBonds.ts",
-    "execute": "tsx ./src/scripts/executeTasks.ts"
+    "demo": "tsx ./src/index.ts",
+    
+    "info:env": "tsx ./src/scripts/getEnvironment.ts",
+    "info:addresses": "tsx ./src/scripts/getAddresses.ts",
+    
+    "shmonad:balance": "tsx ./src/scripts/getShmonadBalance.ts",
+    "shmonad:bonds": "tsx ./src/scripts/getPolicyBonds.ts",
+    
+    "task:execute": "tsx ./src/scripts/executeTasks.ts"
   },
   "type": "module",
   "dependencies": {
