@@ -2,28 +2,41 @@
 
 ## Overview
 
-The **Task Manager** is a decentralized system designed to schedule and execute smart contract tasks on-chain. Its primary goals are to:
+The **Task Manager** is a decentralized system that enables scheduling transactions for specific block heights on the Monad blockchain. It provides economic incentives for executors to include these transactions in their target blocks, creating a robust on-chain automation framework tailored for Monad's unique architecture.
+
+Its primary goals are to:
 
 - **Record Tasks Securely:** When tasks are scheduled, they are recorded along with essential metadata such as the owner's address, a unique nonce, and task-specific parameters
-- **Execute Tasks Reliably:** Tasks are executed in dedicated, isolated environments to ensure safety and gas efficiency
+- **Execute Tasks Reliably:** Tasks execute in isolated environments with dedicated proxies for security and gas efficiency
 - **Provide Economic Security:** The system uses a bonding mechanism via shMONAD tokens to secure tasks against malicious behavior
 - **Optimize Load:** A load balancing mechanism dynamically distributes tasks across blocks, taking into account network conditions and historical execution metrics
 
+:::note
+While FastLane currently operates the executor service, the system is designed to support multiple competing executors in the future.
+:::
+
 ## Core Concepts
+
+### Task Categories & Load Balancing
+
+Tasks are categorized by gas usage to facilitate efficient scheduling and load balancing:
+- **Small Tasks**: ≤ 100,000 gas
+- **Medium Tasks**: ≤ 250,000 gas
+- **Large Tasks**: ≤ 750,000 gas
+
+The system maintains separate queues for each category and automatically advances block pointers to skip blocks with no pending tasks.
 
 ### Scheduling vs. Execution
 
 #### Scheduling
 - **Task Recording:** When a task is scheduled, all necessary details (owner, nonce, task size, target address, and encoded call data) are recorded in the system
-- **Bonding Requirement:** Scheduling a task requires bonding shMONAD tokens to secure the task. The required bond is dynamically calculated based on task size and network conditions
+- **Environment & Proxy:** The Task Manager deploys a minimal, task-specific proxy contract (mimic) which will `delegatecall` the implementation contract during execution
+- **Payment Options:** Tasks can be scheduled using direct MON payment or bonded shMONAD tokens for economic security
 
 #### Execution
-- **Execution Timing:** Tasks are executed at the earliest possible opportunity — at least one block after scheduling
-- **Isolation:** Each task executes in its own isolated environment
-- **Gas Categories:**
-  - Small Tasks: <= 100,000 gas
-  - Medium Tasks: <= 250,000 gas
-  - Large Tasks: <= 750,000 gas
+- **Execution Timing:** Tasks are executed at their `targetBlock` (or later, if the block is congested)
+- **Isolation:** Each task executes in its own isolated environment via a proxy
+- **Fee Distribution:** Fees are automatically distributed to executors upon successful execution
 
 ### Task Encoding
 
@@ -48,8 +61,18 @@ bytes memory taskData = abi.encodeWithSelector(
 ### Scheduling a Task
 
 ```solidity
-// Schedule the task
+// Schedule the task with direct MON payment
 (bool scheduled, uint256 executionCost, bytes32 taskId) = taskManager.scheduleTask(
+    executionEnvironmentAddress,  // Environment address
+    100_000,                     // Gas limit
+    uint64(block.number + 2),    // Target block
+    type(uint256).max / 2,       // Maximum payment
+    taskData,                    // Encoded task data
+    { value: executionCost }     // Pay with MON
+);
+
+// Or schedule with bonded shMONAD tokens
+(bool scheduled, uint256 executionCost, bytes32 taskId) = taskManager.scheduleWithBond(
     executionEnvironmentAddress,  // Environment address
     100_000,                     // Gas limit
     uint64(block.number + 2),    // Target block
@@ -68,6 +91,21 @@ uint256 feesEarned = taskManager.executeTasks(payoutAddress, 0);
 bool executed = taskManager.isTaskExecuted(taskId);
 ```
 
+## Economic Model
+
+The Task Manager uses a transparent economic framework:
+
+| Task Type | Size Category | Gas Limit | Typical Bond Requirement |
+|-----------|---------------|-----------|--------------------------|
+| Small     | ≤ 100,000 gas | 100,000   | 0.01-0.05 shMONAD        |
+| Medium    | ≤ 250,000 gas | 250,000   | 0.05-0.15 shMONAD        |
+| Large     | ≤ 750,000 gas | 750,000   | 0.15-0.50 shMONAD        |
+
+When a task executes successfully, the collected fees are distributed:
+- **Task Executor (70%)**: Rewards the entity that provides computation resources
+- **Block Validator (20%)**: Compensates validators for including execution transactions
+- **shMONAD Yield (10%)**: Contributes to staking yields and protocol sustainability
+
 ## Advanced Features
 
 For detailed information about:
@@ -76,7 +114,7 @@ For detailed information about:
 - Task cancellation and authorization
 - Economic security and fee calculations
 
-For implementation details and test examples, see the [examples/README.md](./examples/README.md) documentation.
+See the [examples/README.md](./examples/README.md) documentation.
 
 ## Core Interfaces
 
@@ -93,6 +131,14 @@ interface ITaskManager {
         uint256 maxPayment,
         bytes calldata taskCallData
     ) external payable returns (bool scheduled, uint256 executionCost, bytes32 taskId);
+    
+    function scheduleWithBond(
+        address implementation,
+        uint256 taskGasLimit,
+        uint64 targetBlock,
+        uint256 maxPayment,
+        bytes calldata taskCallData
+    ) external returns (bool scheduled, uint256 executionCost, bytes32 taskId);
     
     // ... other core scheduling and management functions
 }
@@ -117,11 +163,23 @@ This repository contains example scripts for interacting with the Monad Task Man
 
 ## Scripts Overview
 
+These scripts are organized by functionality to help you navigate the Task Manager system:
+
+### Core Scripts
+- `npm run build` - Build TypeScript files
 - `npm run demo` - Schedule a dummy task (main example)
-- `npm run bonds` - Check bond status for your address
-- `npm run execute` - Execute pending tasks
-- `npm run env` - Get environment information
-- `npm run addresses` - List contract addresses from hub
+
+### Information Scripts
+- `npm run info:env` - Get environment information
+- `npm run info:addresses` - List contract addresses from hub
+
+### shMONAD Utility Scripts
+- `npm run shmonad:balance [address]` - Check shMONAD and MON balances
+- `npm run shmonad:balance:log [address]` - Check balances with detailed RPC logging
+- `npm run shmonad:bonds` - Check bond status for your address
+
+### Task Management Scripts
+- `npm run task:execute` - Execute pending tasks
 
 ## Task Scheduling Example
 
